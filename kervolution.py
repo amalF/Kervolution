@@ -93,14 +93,7 @@ class KernelConv2D(tf.keras.layers.Conv2D):
                 strides=[1,self.strides[0],self.strides[1],1],
                 padding=self.padding.upper(),
                 rates=[1,self.dilation_rate[0],self.dilation_rate[1],1])
-        print("patches", patches.shape)
         output = self.kernel_fn(patches,self.kernel,self.bias)
         output_shape = [-1]+patches.get_shape().as_list()[1:3]+[output.shape[-1]]
         output = tf.reshape(output,output_shape)
         return output
-
-#if __name__=="__main__":
-#    x = np.random.random((1,5,5,3))
-#    convLayer = KernelConv2D(2,3)
-#    conv = tf.keras.layers.Conv2D(2,3,use_bias=False,kernel_initializer='ones')
-
