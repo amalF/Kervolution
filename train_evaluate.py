@@ -21,6 +21,10 @@ import click
 @click.option("-d","--datasetname", default="mnist", type=click.Choice(['cifar10', 'cifar100','mnist']))
 @click.option("--n_classes", default=10)
 ##Training args
+@click.option('--kernel', default='polynomial')
+@click.option('--cp', default=1.0)
+@click.option('--dp', default=3.0)
+@click.option('--gamma', default=1.0)
 @click.option("--batch_size", default=64)
 @click.option("--epochs", default=10)
 @click.option("--lr", default=0.1)
@@ -32,6 +36,7 @@ import click
 def main(datasetname,
          n_classes,
          batch_size,
+         kernel, cp, dp, gamma,
          epochs,
          lr,
          keep_prob,
@@ -56,8 +61,16 @@ def main(datasetname,
                                                      batch_size)
 
     #Network
+    if kernel == 'polynomial':
+        kernel_fn = get_kernel(kernel, cp=cp, dp=dp)
+    elif kernel == 'gaussian':
+        kernel_fn = get_kernel(kernel, gamma=gamma)
+    else:
+        kernel_fn = get_kernel(kernel)
+
     model = LeNet5(num_classes=n_classes,
-                  convLayer=KernelConv2D).call((28,28,1))
+            convLayer=KernelConv2D,
+            kernel_fn=kernel_fn).call((28,28,1))
     print(model.summary())
     #Train optimizer, loss
     boundries = [12000.0, 18000.0] #10,15 epochs
@@ -65,7 +78,7 @@ def main(datasetname,
     lr_schedule = tf.keras.optimizers.schedules.PiecewiseConstantDecay(\
             boundries,
             values)
-    optimizer = tf.keras.optimizers.SGD(learning_rate=lr_schedule, momentum=0.9)
+    optimizer = tf.keras.optimizers.SGD(learning_rate=lr, momentum=0.9)
     loss_fn = tf.keras.losses.SparseCategoricalCrossentropy()
 
     #metrics
@@ -77,9 +90,7 @@ def main(datasetname,
     def train_step(x,labels):
         with tf.GradientTape() as t:
             logits = model(x, training=True)
-            cros_ent_loss = tf.nn.sparse_softmax_cross_entropy_with_logits(
-                    logits=logits,labels=tf.cast(labels, dtype=tf.int32))
-            loss = loss_fn(labels, logits) #tf.reduce_mean(cros_ent_loss)
+            loss = loss_fn(labels, logits)
 
         gradients = t.gradient(loss,model.trainable_variables)
         optimizer.apply_gradients(zip(gradients, model.trainable_variables))
@@ -120,11 +131,9 @@ def main(datasetname,
                 x = tf.expand_dims(x,3)
                 tf.summary.image("input_image", x, step=optimizer.iterations)
                 loss, logits = train_step(x,y)
-                # Update training metric.
                 train_acc_metric(y, logits)
                 ckpt.step.assign_add(1)
                 tf.summary.scalar("loss", loss, step=optimizer.iterations)
-                #tf.summary.scalar("learning_rate", lr_schedule, step=optimizer.iterations)
 
                 if int(ckpt.step) % 1000 == 0:
                     save_path = manager.save()
@@ -138,6 +147,7 @@ def main(datasetname,
                             float(train_acc),
                             step))
 
+
             # Display metrics at the end of each epoch.
             train_acc = train_acc_metric.result()
             tf.summary.scalar("accuracy", train_acc, step=ep)
@@ -146,18 +156,17 @@ def main(datasetname,
             train_acc_metric.reset_states()
 
     ############################## Test the model #############################
-        if ep%4 ==0: 
-            with test_summary_writer.as_default():
-                for x_batch, y_batch in test_dataset:
-                    x_batch = tf.expand_dims(x_batch, 3)
-                    test_logits = model(x_batch, training=False)
-                    # Update test metrics
-                    test_acc_metric(y_batch, test_logits)
+        with test_summary_writer.as_default():
+            for x_batch, y_batch in test_dataset:
+                x_batch = tf.expand_dims(x_batch, 3)
+                test_logits = model(x_batch, training=False)
+                # Update test metrics
+                test_acc_metric(y_batch, test_logits)
 
-                test_acc = test_acc_metric.result()
-                tf.summary.scalar("accuracy", test_acc, step=epochs)
-                test_acc_metric.reset_states()
-                print('Test acc: %s' % (float(test_acc),))
+            test_acc = test_acc_metric.result()
+            tf.summary.scalar("accuracy", test_acc, step=ep)
+            test_acc_metric.reset_states()
+            print('[Epoch {}] Test acc: {}'.format(ep, float(test_acc)))
 
 if __name__=="__main__":
     main()
