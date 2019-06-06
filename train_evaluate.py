@@ -9,7 +9,7 @@ from tensorflow.python.ops import gen_nn_ops
 import tqdm
 import datasets
 from models import *
-from kervolution import *
+from layers import *
 from matplotlib import pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
 
@@ -18,10 +18,12 @@ import click
 #args
 @click.command()
 ##Data args
-@click.option("-d","--datasetname", default="mnist", type=click.Choice(['cifar10', 'cifar100','mnist']))
+@click.option("-d","--datasetname", default="mnist", type=click.Choice(['cifar10','mnist']))
 @click.option("--n_classes", default=10)
 ##Training args
+@click.option('--model_name', default='KNN')
 @click.option('--kernel', default='polynomial')
+@click.option('--pooling_method', default='max') 
 @click.option('--cp', default=1.0)
 @click.option('--dp', default=3.0)
 @click.option('--gamma', default=1.0)
@@ -33,14 +35,9 @@ import click
 ##logging args
 @click.option("-o","--base_log_dir", default="logs")
 
-def main(datasetname,
-         n_classes,
-         batch_size,
-         kernel, cp, dp, gamma,
-         epochs,
-         lr,
-         keep_prob,
-         weight_decay,
+def main(datasetname,n_classes,batch_size,
+         model_name, kernel, cp, dp, gamma,pooling_method,
+         epochs,lr,keep_prob,weight_decay,
          base_log_dir):
 
     #Fix TF random seed
@@ -57,28 +54,39 @@ def main(datasetname,
         train_samples = train_data.num_samples
         test_dataset = datasets.MnistDataSet(subset="test",
                                              use_distortion=False,
-                                             shuffle=False).make_batch(\
-                                                     batch_size)
+                                             shuffle=False,
+                                             repeat=1).make_batch(batch_size)
+        input_shape=(28,28,1)
+    if datasetname=='cifar10':
+        train_data = datasets.Cifar10DataSet(shuffle=True,
+                                              repeat=1)
+        train_dataset = train_data.make_batch(batch_size)
+        train_samples = train_data.num_samples
+
+        test_dataset = datasets.Cifar10DataSet(subset="test",
+                                             use_distortion=False,
+                                             shuffle=False,
+                                             repeat=1).make_batch(batch_size)
+        
+        input_shape=(32,32,3)
 
     #Network
-    if kernel == 'polynomial':
-        kernel_fn = get_kernel(kernel, cp=cp, dp=dp)
-    elif kernel == 'gaussian':
-        kernel_fn = get_kernel(kernel, gamma=gamma)
-    else:
-        kernel_fn = get_kernel(kernel)
+    kernel_fn = get_kernel(kernel, cp=cp, dp=dp, gamma=gamma)
 
-    model = LeNet5(num_classes=n_classes,
-            convLayer=KernelConv2D,
-            kernel_fn=kernel_fn).call((28,28,1))
+    model = get_model(model_name,
+                      num_classes=n_classes,
+                      keep_prob=keep_prob,
+                      kernel_fn=kernel_fn,
+                      pooling=pooling_method).call(input_shape)
+
     print(model.summary())
     #Train optimizer, loss
     boundries = [12000.0, 18000.0] #10,15 epochs
     values = [lr, lr*0.1, lr*0.01]
     lr_schedule = tf.keras.optimizers.schedules.PiecewiseConstantDecay(\
-            boundries,
-            values)
-    optimizer = tf.keras.optimizers.SGD(learning_rate=lr, momentum=0.9)
+                    boundries,
+                    values)
+    optimizer = tf.keras.optimizers.SGD(learning_rate=lr_schedule, momentum=0.9)
     loss_fn = tf.keras.losses.SparseCategoricalCrossentropy()
 
     #metrics
@@ -128,7 +136,8 @@ def main(datasetname,
         with train_summary_writer.as_default():
             # train for an epoch
             for step, (x,y) in enumerate(train_dataset):
-                x = tf.expand_dims(x,3)
+                if len(x.shape)==3:
+                    x = tf.expand_dims(x,3)
                 tf.summary.image("input_image", x, step=optimizer.iterations)
                 loss, logits = train_step(x,y)
                 train_acc_metric(y, logits)
@@ -158,7 +167,8 @@ def main(datasetname,
     ############################## Test the model #############################
         with test_summary_writer.as_default():
             for x_batch, y_batch in test_dataset:
-                x_batch = tf.expand_dims(x_batch, 3)
+                if len(x_batch.shape)==3:
+                    x_batch = tf.expand_dims(x_batch, 3)
                 test_logits = model(x_batch, training=False)
                 # Update test metrics
                 test_acc_metric(y_batch, test_logits)

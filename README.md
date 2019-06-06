@@ -18,8 +18,12 @@ pip install -r requirements.txt
 
 To launch training using *LeNet5* and *MNIST* dataset as described in section 4 in the paper :
 ```python
-python train_evaluate.py --lr 0.003 --batch_size 50 --epochs 20
+python train_evaluate.py --lr 0.003 --batch_size 50 --epochs 20 --model_name
+KNN --kernel polynomial
 ```
+
+![atl text]("./images/kernelsvsConvergence.png")
+
 
 ### Contact
 amal.feriani@gmail.com

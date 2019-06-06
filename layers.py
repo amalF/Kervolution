@@ -38,18 +38,19 @@ class LPNormKernel(DifferenceLayer):
         return out
 
 class PolynomialKernel(LinearKernel):
-    def __init__(self,cp=1.0, dp=3.0, train_cp=True):
+    def __init__(self,cp=1.0, dp=3.0, train_pars=False):
         super(PolynomialKernel, self).__init__()
         self.initial_cp = cp
         self.dp = dp
-        self.train_cp = train_cp
+        self.train_pars = train_pars
     def build(self, input_shape):
-        if self.train_cp:
+        if self.train_pars:
             self.cp = self.add_variable(\
                 name='cp',
-                shape=(1,),
+                shape=(),
                 initializer=tf.keras.initializers.get('zeros'),
                 trainable=True)
+            tf.summary.scalar("cp",self.cp)
         else:
             self.cp = self.initial_cp
 
@@ -66,13 +67,14 @@ class SigmoidKernel(LinearKernel):
     def __init__(self):
         super(SigmoidKernel, self).__init__()
     def call(self, x, w, b):
-        out = tf.math.tanh(super(SigmoidKernel,self).call(x,w,None))
+        out = super(SigmoidKernel,self).call(x,w,None)
+        out = tf.math.tanh(out)
         if b is not None:
             return out +b
         return out
 
 class GaussianKernel(DifferenceLayer):
-    def __init__(self, gamma=1.0, train_gamma=True):
+    def __init__(self, gamma=1.0, train_gamma=False):
         super(GaussianKernel, self).__init__()
         self.initial_gamma = gamma
         self.train_gamma = train_gamma
@@ -82,7 +84,7 @@ class GaussianKernel(DifferenceLayer):
             self.gamma = self.add_variable(\
                    name='gamma',
                    shape=(),
-                   initializer=tf.keras.initializers.get('zeros'),
+                   initializer=tf.keras.initializers.get('ones'),
                    trainable=True)
         else:
             self.gamma = self.initial_gamma
@@ -90,7 +92,7 @@ class GaussianKernel(DifferenceLayer):
 
     def call(self, x, w, b):
         diff = super(GaussianKernel,self).call(x,w)
-        diff_norm = tf.reduce_sum(tf.square(diff),axis=2)
+        diff_norm = tf.reduce_sum(tf.square(diff),axis=-2)
         out = tf.exp(-self.gamma*diff_norm)
         if b is not None:
             return out + b
@@ -102,7 +104,7 @@ class KernelConv2D(tf.keras.layers.Conv2D):
                 kernel_size,
                 kernel_fn=GaussianKernel,
                 strides=(1,1),
-                padding='VALID',
+                padding='SAME',
                 dilation_rate=(1,1),
                 use_bias=True):
 
@@ -128,9 +130,9 @@ class KernelConv2D(tf.keras.layers.Conv2D):
 
 def get_kernel(kernel_name, **kwargs):
     if kernel_name == 'polynomial':
-        return PolynomialKernel(**kwargs)
+        return PolynomialKernel(cp=kwargs['cp'], dp=kwargs['dp'])
     elif kernel_name == 'gaussian':
-        return GaussianKernel(**kwargs)
+        return GaussianKernel(gamma=kwargs['gamma'])
     elif kernel_name == 'sigmoid':
         return SigmoidKernel()
     elif kernel_name == 'L1':
