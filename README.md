@@ -22,10 +22,9 @@ python train_evaluate.py --lr 0.003 --batch_size 50 --epochs 20 --model_name
 KNN --kernel polynomial
 ```
 
-![atl text]("./images/kernelsvsConvergence.png")
 <br />
 <div align="center">
-<img width="100%" src ="./images/kernelsvsConvergence.png" />
+<img width="100%" src ="./images/kernelsvcConvergence.png" />
 <br />
 
 
