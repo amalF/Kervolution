@@ -23,6 +23,10 @@ KNN --kernel polynomial
 ```
 
 ![atl text]("./images/kernelsvsConvergence.png")
+<br />
+<div align="center">
+<img width="100%" src ="./images/kernelsvsConvergence.png" />
+<br />
 
 
 ### Contact
