@@ -117,7 +117,7 @@ class KernelConv2D(tf.keras.layers.Conv2D):
         self.kernel_fn = kernel_fn
 
     def call(self, x):
-        patches = tf.image.extract_image_patches(\
+        patches = tf.image.extract_patches(\
                 x,
                 sizes=[1,self.kernel_size[0],self.kernel_size[1],1],
                 strides=[1,self.strides[0],self.strides[1],1],
