@@ -2,9 +2,10 @@ import tensorflow as tf
 import numpy as np
 
 class LinearKernel(tf.keras.layers.Layer):
-    def __init__(self):
-        super(LinearKernel, self).__init__()
-    def call(self, x, w, b):
+    def __init__(self, name="LinearConv2D"):
+        super(LinearKernel, self).__init__(name=name)
+    def call(self, inputs):
+        x, w, b = inputs
         out_channels = w.get_shape().as_list()[-1]
         w = tf.reshape(w,(-1,out_channels))
         x = tf.reshape(x,(-1,x.get_shape().as_list()[-1]))
@@ -16,83 +17,95 @@ class LinearKernel(tf.keras.layers.Layer):
 class DifferenceLayer(tf.keras.layers.Layer):
     def __init__(self):
         super(DifferenceLayer, self).__init__()
-    def call(self,x,w):
+    def call(self,inputs):
+        x, w = inputs
         out_channels = w.get_shape().as_list()[-1]
-        w = tf.reshape(w,(-1,out_channels))
+        w = tf.reshape(w,(1,1,-1,out_channels))
         input_shape = x.get_shape().as_list()
         x = tf.reshape(x,(-1,input_shape[1]*input_shape[2],input_shape[-1]))
         x = x[:,:,:,None]
-        out = x - w
+        out = tf.math.subtract(x, w)
         return out
 
-class LPNormKernel(DifferenceLayer):
+class LPNormKernel(tf.keras.layers.Layer):
     def __init__(self,p=1):
         super(LPNormKernel, self).__init__()
         self.ord = p
+        self.diff = DifferenceLayer()
 
-    def call(self,x,w,b):
-        out = super(LPNormKernel, self).call(x,w)
+    def call(self,inputs):
+        x, w, b = inputs
+        out = self.diff((x,w))
         out = tf.norm(out,ord=self.ord, axis=2)
         if b is not None:
             return out + b
         return out
 
-class PolynomialKernel(LinearKernel):
-    def __init__(self,cp=1.0, dp=3.0, train_pars=False):
-        super(PolynomialKernel, self).__init__()
-        self.initial_cp = cp
+class PolynomialKernel(tf.keras.layers.Layer):
+    def __init__(self,cp=1.0, dp=3.0, trainable=False):
+
+        super(PolynomialKernel, self).__init__(name="polynomialConv2D")
         self.dp = dp
-        self.train_pars = train_pars
+        self.cp = cp
+        self.trainable = trainable
+        self.linear = LinearKernel()
+
     def build(self, input_shape):
-        if self.train_pars:
-            self.cp = self.add_variable(\
+        if self.trainable:
+            self.cp = self.add_weight(\
                 name='cp',
                 shape=(),
-                initializer=tf.keras.initializers.get('zeros'),
-                trainable=True)
-            tf.summary.scalar("cp",self.cp)
-        else:
-            self.cp = self.initial_cp
+                initializer=tf.keras.initializers.Constant(0.3),
+                trainable=True,
+                constraint=tf.keras.constraints.non_neg())
 
-        self.built = True
-    def call(self, x, w, b):
-        conv = super(PolynomialKernel,self).call(x,w,None)
+        super(PolynomialKernel, self).build(input_shape)
+
+    def call(self, inputs):
+        x, w, b = inputs
+        conv = self.linear((x,w,None))
         s = conv + self.cp
         out =  s**self.dp
         if b is not None:
             return out +b
         return out
 
-class SigmoidKernel(LinearKernel):
+class SigmoidKernel(tf.keras.layers.Layer):
     def __init__(self):
-        super(SigmoidKernel, self).__init__()
-    def call(self, x, w, b):
-        out = super(SigmoidKernel,self).call(x,w,None)
+        super(SigmoidKernel, self).__init__(name="sigmoidConv2D")
+        self.linear = LinearKernel()
+
+    def call(self, inputs):
+        x, w, b = inputs
+        out = self.linear((x,w,None))
         out = tf.math.tanh(out)
         if b is not None:
             return out +b
         return out
 
-class GaussianKernel(DifferenceLayer):
-    def __init__(self, gamma=1.0, train_gamma=False):
-        super(GaussianKernel, self).__init__()
+class GaussianKernel(tf.keras.layers.Layer):
+    def __init__(self, gamma=1.0, trainable=False):
+        super(GaussianKernel, self).__init__(name="gaussianConv2D")
         self.initial_gamma = gamma
-        self.train_gamma = train_gamma
+        self.trainable = trainable
+        self.diff = DifferenceLayer()
 
     def build(self, input_shape):
-        if self.train_gamma:
-            self.gamma = self.add_variable(\
+        if self.trainable:
+            self.gamma = self.add_weight(\
                    name='gamma',
                    shape=(),
-                   initializer=tf.keras.initializers.get('ones'),
+                   initializer=tf.keras.initializers.Constant(1.0),
                    trainable=True)
         else:
             self.gamma = self.initial_gamma
-        self.built = True
 
-    def call(self, x, w, b):
-        diff = super(GaussianKernel,self).call(x,w)
-        diff_norm = tf.reduce_sum(tf.square(diff),axis=-2)
+        super(GaussianKernel, self).build(input_shape)
+
+    def call(self, inputs):
+        x, w, b = inputs
+        diff = self.diff((x,w))
+        diff_norm = tf.reduce_sum(diff**2,axis=2)
         out = tf.exp(-self.gamma*diff_norm)
         if b is not None:
             return out + b
@@ -106,7 +119,7 @@ class KernelConv2D(tf.keras.layers.Conv2D):
                 strides=(1,1),
                 padding='SAME',
                 dilation_rate=(1,1),
-                use_bias=True):
+                use_bias=False):
 
         super(KernelConv2D,self).__init__(filters,
                                      kernel_size,
@@ -123,7 +136,7 @@ class KernelConv2D(tf.keras.layers.Conv2D):
                 strides=[1,self.strides[0],self.strides[1],1],
                 padding=self.padding.upper(),
                 rates=[1,self.dilation_rate[0],self.dilation_rate[1],1])
-        output = self.kernel_fn(patches,self.kernel,self.bias)
+        output = self.kernel_fn((patches,self.kernel,self.bias))
         output_shape = [-1]+patches.get_shape().as_list()[1:3]+[output.shape[-1]]
         output = tf.reshape(output,output_shape)
         return output

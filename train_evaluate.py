@@ -27,10 +27,10 @@ import click
 @click.option('--cp', default=1.0)
 @click.option('--dp', default=3.0)
 @click.option('--gamma', default=1.0)
-@click.option("--batch_size", default=64)
-@click.option("--epochs", default=10)
-@click.option("--lr", default=0.1)
-@click.option("--keep_prob", default=0.5)
+@click.option("--batch_size", default=50)
+@click.option("--epochs", default=20)
+@click.option("--lr", default=0.003)
+@click.option("--keep_prob", default=1.0)
 @click.option("--weight_decay", default=0.0) 
 ##logging args
 @click.option("-o","--base_log_dir", default="logs")
@@ -74,14 +74,16 @@ def main(datasetname,n_classes,batch_size,
     kernel_fn = get_kernel(kernel, cp=cp, dp=dp, gamma=gamma)
 
     model = get_model(model_name,
+                      input_shape,
                       num_classes=n_classes,
                       keep_prob=keep_prob,
                       kernel_fn=kernel_fn,
-                      pooling=pooling_method).call(input_shape)
+                      pooling=pooling_method)
 
     print(model.summary())
     #Train optimizer, loss
-    boundries = [12000.0, 18000.0] #10,15 epochs
+    nrof_steps_per_epoch = (train_samples//batch_size)
+    boundries = [nrof_steps_per_epoch*10, nrof_steps_per_epoch*15]
     values = [lr, lr*0.1, lr*0.01]
     lr_schedule = tf.keras.optimizers.schedules.PiecewiseConstantDecay(\
                     boundries,
@@ -99,6 +101,8 @@ def main(datasetname,n_classes,batch_size,
         with tf.GradientTape() as t:
             logits = model(x, training=True)
             loss = loss_fn(labels, logits)
+
+
 
         gradients = t.gradient(loss,model.trainable_variables)
         optimizer.apply_gradients(zip(gradients, model.trainable_variables))
@@ -143,6 +147,11 @@ def main(datasetname,n_classes,batch_size,
                 train_acc_metric(y, logits)
                 ckpt.step.assign_add(1)
                 tf.summary.scalar("loss", loss, step=optimizer.iterations)
+                
+                
+                
+                
+                
 
                 if int(ckpt.step) % 1000 == 0:
                     save_path = manager.save()
@@ -163,6 +172,7 @@ def main(datasetname,n_classes,batch_size,
             print('Training acc over epoch: %s' % (float(train_acc),))
             # Reset training metrics at the end of each epoch
             train_acc_metric.reset_states()
+ 
 
     ############################## Test the model #############################
         with test_summary_writer.as_default():
