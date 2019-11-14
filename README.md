@@ -25,20 +25,20 @@ KNN --kernel polynomial
 The figures below represent the test accuracy for the first epoch.  
 <br />
 <div align="center">
-<img width="80%" src ="./images/KernelsVsConvergence.png.png" /> 
+<img width="90%" src ="./images/KernelsVsConvergence.png" /> 
 <br />
 
 For the learnable parameter cp of the polynomial kernal, the initialization of this parameter is important for faster convergence. The curve in the figure below used 0.5 as initial value.
 
 <br />
 <div align="center">
-<img width="80%" src ="./images/HyperparametersVsConvergence.png" />
+<img width="90%" src ="./images/HyperparametersVsConvergence.png" />
 <br />
 
 To test the non-linearity impact on the performance, the activations are removed and the max pooling is replaced by an average pooling. These experiments are done using a lower leraning rate (0.0001)
 
 <br />
 <div align="center">
-<img width="80%" src ="./images/NonlinearityVsConvergence.png" />
+<img width="90%" src ="./images/NonlinearityVsConvergence.png" />
 <br />
 
