@@ -39,13 +39,14 @@ class DataSet(object):
         Make data batches
         """
         # Extract data
-        # This can be costy if the dataset if too large
-        # TODO consider using Iterator
         dataset = tf.data.Dataset.from_tensor_slices(self.data)
 
         #Shuffle the data before
         if self.shuffle:
             dataset = dataset.shuffle(128*batch_size)
+
+        if self.repeat:
+            dataset = dataset.repeat(self.repeat)
 
         # Transform data
 
@@ -57,8 +58,8 @@ class DataSet(object):
 
         # Batch it up.
         dataset = dataset.batch(batch_size)
-        # Repeat
-        dataset = dataset.repeat(self.repeat).prefetch(batch_size)
+        
+        dataset = dataset.prefetch(batch_size)
 
         return dataset
 
@@ -73,7 +74,6 @@ class Cifar10DataSet(DataSet):
 
         train_data, test_data = tf.keras.datasets.cifar10.load_data()
         indexes = np.arange(len(train_data[0]))
-        #np.random.shuffle(indexes)
 
         if subset == "train":
             train_indexes = indexes[:45000]
@@ -98,7 +98,6 @@ class Cifar10DataSet(DataSet):
                                              shuffle,
                                              repeat,
                                              nThreads)
-    @tf.function
     def _map_fn(self, image, label):
         """
         Apply transformations on the data
@@ -109,17 +108,8 @@ class Cifar10DataSet(DataSet):
     def preprocess(self, image, label):
         """Preprocess a single image in [height, width, depth] layout."""
         image = tf.cast(image, tf.float32)/255.0
-        #image = tf.clip_by_value(image, 0, 255.0)
-        #image = image / 127.5 -1
         label = tf.cast(label, tf.int64)
 
-        #if self.subset == 'train' and self.use_distortion:
-            # Pad 4 pixels on each dimension of feature map, done in mini-batch 
-            #image = tf.image.resize_image_with_crop_or_pad(image, 40, 40)
-            #image = tf.image.random_crop(image, [self.image_height, self.image_width, self.image_depth])
-            #image = tf.image.random_flip_left_right(image)
-
-        #image = image/255.0 #tf.image.per_image_standardization(image)
         return image, label
 
 
@@ -147,7 +137,6 @@ class MnistDataSet(DataSet):
                                            shuffle,
                                            repeat,
                                            nThreads)
-    @tf.function
     def _map_fn(self, image, label):
         return self.preprocess(image, label)
 
@@ -155,3 +144,25 @@ class MnistDataSet(DataSet):
         image = tf.cast(image, tf.float32)/255.0
         label = tf.cast(label, tf.int64)
         return image, label
+
+def get_dataset(datasetname, batch_size, subset="train", shuffle=True, repeat=1, use_distortion=False):
+    if datasetname=='mnist':
+        mnistdataset = MnistDataSet(subset= subset,
+                                            shuffle=shuffle,
+                                            repeat=repeat,
+                                            use_distortion=use_distortion)
+        dataset = mnistdataset.make_batch(batch_size)
+        nrof_samples = mnistdataset.num_samples
+        return dataset, nrof_samples
+
+    if datasetname=='cifar10':
+        cifardataset = Cifar10DataSet(subset=subset,
+                                               shuffle=shuffle,
+                                              repeat=repeat,
+                                              use_distortion=use_distortion)
+        dataset = cifardataset.make_batch(batch_size)
+        nrof_samples = train_data.num_samples
+
+        return dataset, nrof_samples
+                                                                              
+        

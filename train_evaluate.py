@@ -4,15 +4,10 @@ import os
 import functools
 import numpy as np
 import tensorflow as tf
-from tensorflow.python.framework import ops
-from tensorflow.python.ops import gen_nn_ops
 import tqdm
 import datasets
-from models import *
+from models import models_factory
 from layers import *
-from matplotlib import pyplot as plt
-from mpl_toolkits.mplot3d import Axes3D
-
 import click
 
 #args
@@ -21,7 +16,7 @@ import click
 @click.option("-d","--datasetname", default="mnist", type=click.Choice(['cifar10','mnist']))
 @click.option("--n_classes", default=10)
 ##Training args
-@click.option('--model_name', default='KNN')
+@click.option('--model_name', default='lenetKNN')
 @click.option('--kernel', default='polynomial')
 @click.option('--pooling_method', default='max') 
 @click.option('--cp', default=1.0)
@@ -47,43 +42,21 @@ def main(datasetname,n_classes,batch_size,
     os.makedirs(log_dir, exist_ok=True)
 
     # dataset
-    if datasetname=='mnist':
-        train_data = datasets.MnistDataSet(shuffle=True,
-                                           repeat=1)
-        train_dataset = train_data.make_batch(batch_size)
-        train_samples = train_data.num_samples
-        test_dataset = datasets.MnistDataSet(subset="test",
-                                             use_distortion=False,
-                                             shuffle=False,
-                                             repeat=1).make_batch(batch_size)
-        input_shape=(28,28,1)
-    if datasetname=='cifar10':
-        train_data = datasets.Cifar10DataSet(shuffle=True,
-                                              repeat=1)
-        train_dataset = train_data.make_batch(batch_size)
-        train_samples = train_data.num_samples
-
-        test_dataset = datasets.Cifar10DataSet(subset="test",
-                                             use_distortion=False,
-                                             shuffle=False,
-                                             repeat=1).make_batch(batch_size)
-        
-        input_shape=(32,32,3)
+    train_dataset, train_samples = datasets.get_dataset(datasetname, batch_size)
+    test_dataset, _ = datasets.get_dataset(datasetname, batch_size, subset="test", shuffle=False)
 
     #Network
     kernel_fn = get_kernel(kernel, cp=cp, dp=dp, gamma=gamma)
 
-    model = get_model(model_name,
-                      input_shape,
+    model = models_factory.get_model(model_name,
                       num_classes=n_classes,
                       keep_prob=keep_prob,
                       kernel_fn=kernel_fn,
                       pooling=pooling_method)
 
-    print(model.summary())
     #Train optimizer, loss
     nrof_steps_per_epoch = (train_samples//batch_size)
-    boundries = [nrof_steps_per_epoch*10, nrof_steps_per_epoch*15]
+    boundries = [nrof_steps_per_epoch*75, nrof_steps_per_epoch*125]
     values = [lr, lr*0.1, lr*0.01]
     lr_schedule = tf.keras.optimizers.schedules.PiecewiseConstantDecay(\
                     boundries,
@@ -101,8 +74,6 @@ def main(datasetname,n_classes,batch_size,
         with tf.GradientTape() as t:
             logits = model(x, training=True)
             loss = loss_fn(labels, logits)
-
-
 
         gradients = t.gradient(loss,model.trainable_variables)
         optimizer.apply_gradients(zip(gradients, model.trainable_variables))
@@ -148,11 +119,6 @@ def main(datasetname,n_classes,batch_size,
                 ckpt.step.assign_add(1)
                 tf.summary.scalar("loss", loss, step=optimizer.iterations)
                 
-                
-                
-                
-                
-
                 if int(ckpt.step) % 1000 == 0:
                     save_path = manager.save()
                     print("Saved checkpoint for step {}: {}".format(int(ckpt.step),
