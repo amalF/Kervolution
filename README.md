@@ -41,3 +41,5 @@ To test the non-linearity impact on the performance, the activations are removed
 <img width="90%" src ="./images/NonlinearityVsConvergence.png" />
 <br />
 
+### Licence
+MIT
